@@ -1,9 +1,19 @@
 #include "message_loop.h"
 
 #include <sys/epoll.h>
-#include <error.h>
 
-MessageLoop::MessageLoop() : epoll_fd_(::epoll_create(1)), running_(false) {}
+#include <asm/unistd.h>
+#include <error.h>
+#include <sys/timerfd.h>
+
+static constexpr int kClockType = CLOCK_MONOTONIC;
+
+MessageLoop::MessageLoop()
+    : epoll_fd_(::epoll_create(1)),
+      timer_fd_(::timerfd_create(kClockType, TFD_NONBLOCK | TFD_CLOEXEC)),
+      running_(false) {
+        AddOrRemoveTimerSource(true);
+      }
 void MessageLoop::Run() {
   running_ = true;
 
@@ -27,5 +37,25 @@ void MessageLoop::Run() {
   }
 }
 
+bool MessageLoop::AddOrRemoveTimerSource(bool add) {
+  struct epoll_event event = {};
+
+  event.events = EPOLLIN;
+  // The data is just for informational purposes so we know when we were worken
+  // by the FD.
+  event.data.fd = timer_fd_;
+
+  int ctl_result =
+      ::epoll_ctl(epoll_fd_, add ? EPOLL_CTL_ADD : EPOLL_CTL_DEL,
+                  timer_fd_, &event);
+  return ctl_result == 0;
+}
+
+int MessageLoop::timerfd_create(int clockid, int flags) {
+  return syscall(__NR_timerfd_create, clockid, flags);
+}
+
 void MessageLoop::Terminate() {}
-MessageLoop::~MessageLoop() {}
+MessageLoop::~MessageLoop() {
+  AddOrRemoveTimerSource(false);
+}

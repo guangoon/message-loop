@@ -9,7 +9,10 @@ class MessageLoop {
   void Run();
   void Terminate();
  private:
+  bool AddOrRemoveTimerSource(bool add);
+  int timerfd_create(int clockid, int flags);
   int epoll_fd_;
+  int timer_fd_;
   bool running_;
 };
 
